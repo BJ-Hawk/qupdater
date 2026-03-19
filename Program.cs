@@ -491,10 +491,7 @@ namespace QUpdater
                     {
                         await DownloadAndInstall(latestVersion, downloadUrl);
                     }
-                    else
-                    {
-                        MessageBox.Show("qBittorrent is up to date!", "No Updates", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    }
+                    // Silently do nothing if already up to date
                 }
             }
             finally
