@@ -12,8 +12,8 @@ The application will:
 ## Install:
 
 1. Unzip the zip from releases page
-2. Run `install.bat` as administrator, select install location (Current folder or Program Files)
+2. Run `install.bat`, select install location (Current folder or Program Files)
 3. Enjoy
 
 ## Uninstall
-1. Run `uninstall.bat` as administrator
+1. Run `uninstall.bat`
