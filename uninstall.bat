@@ -1,27 +1,125 @@
 @echo off
-echo Uninstalling qUpdater autorun...
+setlocal EnableExtensions
+
+echo Uninstalling qUpdater...
+echo.
+
+set "RUN_KEY=HKCU\Software\Microsoft\Windows\CurrentVersion\Run"
+set "VALUE_NAME=qUpdater"
+set "PROGRAM_DIR=%ProgramFiles%\qUpdater"
+set "PROGRAM_EXE=%PROGRAM_DIR%\qUpdater.exe"
+
+:: Elevated branch - only used for deleting Program Files folder
+if /I "%~1"=="/deleteProgramFiles" goto deleteProgramFiles
+
+
+echo Reading startup registry entry...
+
+set "AUTORUN_PATH="
+
+for /f "tokens=1,2,*" %%A in ('reg query "%RUN_KEY%" /v "%VALUE_NAME%" 2^>nul ^| findstr /I "%VALUE_NAME%"') do (
+	if /I "%%A"=="%VALUE_NAME%" (
+		if /I "%%B"=="REG_SZ" (
+			set "AUTORUN_PATH=%%C"
+		)
+	)
+)
+
+:: Remove quotes from registry path if present
+set "AUTORUN_PATH=%AUTORUN_PATH:"=%"
+
+echo.
+if defined AUTORUN_PATH (
+	echo Found autorun path:
+	echo %AUTORUN_PATH%
+) else (
+	echo No autorun registry entry found.
+)
 
 echo.
 echo Stopping qUpdater if running...
 taskkill /F /IM qUpdater.exe 2>nul
 
+
 echo.
 echo Removing startup registry entry...
-reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "qUpdater" /f
+reg delete "%RUN_KEY%" /v "%VALUE_NAME%" /f >nul 2>&1
 
 if %ERRORLEVEL% NEQ 0 (
-	echo Warning: Registry entry was not found or could not be removed.
+	echo Registry entry was not found or could not be removed.
 	echo It may have already been removed.
 ) else (
 	echo Registry entry removed successfully.
 )
 
+
+:: If autorun was pointing to Program Files, remove the Program Files folder too
+if /I "%AUTORUN_PATH%"=="%PROGRAM_EXE%" (
+	echo.
+	echo qUpdater was installed in Program Files.
+	echo Program Files folder should be removed:
+	echo %PROGRAM_DIR%
+	echo.
+
+	:: Check admin rights
+	fltmc >nul 2>&1
+	if %ERRORLEVEL% NEQ 0 (
+		echo Requesting administrative privileges to remove Program Files folder...
+		goto UACPrompt
+	)
+
+	goto deleteProgramFiles
+)
+
+
+echo.
+echo qUpdater was not installed in Program Files, or no Program Files autorun was found.
+echo Only the startup registry entry was removed.
 echo.
 echo Uninstall complete.
-echo qUpdater will no longer start automatically with Windows.
-echo.
-echo Note: qUpdater.exe itself was not deleted.
-
 echo.
 echo Press any key to close this window...
 pause >nul
+exit /b 0
+
+
+:deleteProgramFiles
+echo.
+echo Removing Program Files installation...
+
+echo Stopping qUpdater if running...
+taskkill /F /IM qUpdater.exe 2>nul
+
+if exist "%PROGRAM_DIR%" (
+	rmdir /S /Q "%PROGRAM_DIR%"
+
+	if exist "%PROGRAM_DIR%" (
+		echo Error: Failed to remove folder:
+		echo %PROGRAM_DIR%
+		echo.
+		echo You may need to close qUpdater or delete the folder manually.
+		echo.
+		echo Press any key to close this window...
+		pause >nul
+		exit /b 1
+	) else (
+		echo Program Files folder removed successfully.
+	)
+) else (
+	echo Program Files folder was not found.
+)
+
+echo.
+echo Uninstall complete.
+echo.
+echo Press any key to close this window...
+pause >nul
+exit /b 0
+
+
+:UACPrompt
+echo Set UAC = CreateObject^("Shell.Application"^) > "%temp%\getadmin_qUpdater_uninstall.vbs"
+echo UAC.ShellExecute "%~s0", "/deleteProgramFiles", "", "runas", 1 >> "%temp%\getadmin_qUpdater_uninstall.vbs"
+"%temp%\getadmin_qUpdater_uninstall.vbs"
+del "%temp%\getadmin_qUpdater_uninstall.vbs" 2>nul
+exit /b
