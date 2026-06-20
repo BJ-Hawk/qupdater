@@ -81,6 +81,8 @@ goto addRegistry
 :addRegistry
 echo.
 echo Adding qUpdater to startup registry...
+:: Keep this HKCU write in the launching process so Program Files installs
+:: autorun for the user who started the installer, not the elevated account.
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "qUpdater" /t REG_SZ /d "\"%TARGET_EXE%\"" /f
 
 if %ERRORLEVEL% NEQ 0 (
