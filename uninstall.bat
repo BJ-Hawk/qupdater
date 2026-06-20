@@ -25,16 +25,21 @@ for /f "tokens=1,2,*" %%A in ('reg query "%RUN_KEY%" /v "%VALUE_NAME%" 2^>nul ^|
 	)
 )
 
-:: Remove quotes from registry path if present
+:: Remove quotes from registry path if present.
+:: This line is intentionally outside parenthesized blocks because paths may contain parentheses.
 set "AUTORUN_PATH=%AUTORUN_PATH:"=%"
 
 echo.
-if defined AUTORUN_PATH (
-	echo Found autorun path:
-	echo %AUTORUN_PATH%
-) else (
-	echo No autorun registry entry found.
-)
+if not defined AUTORUN_PATH goto noAutorunPath
+
+echo Found autorun path:
+echo %AUTORUN_PATH%
+goto afterAutorunPathEcho
+
+:noAutorunPath
+echo No autorun registry entry found.
+
+:afterAutorunPathEcho
 
 echo.
 echo Stopping qUpdater if running...
@@ -45,33 +50,38 @@ echo.
 echo Removing startup registry entry...
 reg delete "%RUN_KEY%" /v "%VALUE_NAME%" /f >nul 2>&1
 
-if %ERRORLEVEL% NEQ 0 (
-	echo Registry entry was not found or could not be removed.
-	echo It may have already been removed.
-) else (
-	echo Registry entry removed successfully.
-)
+if %ERRORLEVEL% NEQ 0 goto registryRemoveWarning
+echo Registry entry removed successfully.
+goto afterRegistryRemove
+
+:registryRemoveWarning
+echo Registry entry was not found or could not be removed.
+echo It may have already been removed.
+
+:afterRegistryRemove
 
 
-:: If autorun was pointing to Program Files, remove the Program Files folder too
-if /I "%AUTORUN_PATH%"=="%PROGRAM_EXE%" (
-	echo.
-	echo qUpdater was installed in Program Files.
-	echo Program Files folder should be removed:
-	echo %PROGRAM_DIR%
-	echo.
+:: Compare outside parenthesized blocks because AUTORUN_PATH may contain parentheses.
+if /I "%AUTORUN_PATH%"=="%PROGRAM_EXE%" goto programFilesInstallFound
 
-	:: Check admin rights
-	fltmc >nul 2>&1
-	if %ERRORLEVEL% NEQ 0 (
-		echo Requesting administrative privileges to remove Program Files folder...
-		goto UACPrompt
-	)
-
-	goto deleteProgramFiles
-)
+goto notProgramFilesInstall
 
 
+:programFilesInstallFound
+echo.
+echo qUpdater was installed in Program Files.
+echo Program Files folder should be removed:
+echo %PROGRAM_DIR%
+echo.
+
+:: Check admin rights
+fltmc >nul 2>&1
+if %ERRORLEVEL% NEQ 0 goto UACPrompt
+
+goto deleteProgramFiles
+
+
+:notProgramFilesInstall
 echo.
 echo qUpdater was not installed in Program Files, or no Program Files autorun was found.
 echo Only the startup registry entry was removed.
@@ -90,25 +100,33 @@ echo Removing Program Files installation...
 echo Stopping qUpdater if running...
 taskkill /F /IM qUpdater.exe 2>nul
 
-if exist "%PROGRAM_DIR%" (
-	rmdir /S /Q "%PROGRAM_DIR%"
+if not exist "%PROGRAM_DIR%" goto programFilesFolderMissing
 
-	if exist "%PROGRAM_DIR%" (
-		echo Error: Failed to remove folder:
-		echo %PROGRAM_DIR%
-		echo.
-		echo You may need to close qUpdater or delete the folder manually.
-		echo.
-		echo Press any key to close this window...
-		pause >nul
-		exit /b 1
-	) else (
-		echo Program Files folder removed successfully.
-	)
-) else (
-	echo Program Files folder was not found.
-)
+rmdir /S /Q "%PROGRAM_DIR%"
 
+if exist "%PROGRAM_DIR%" goto programFilesRemoveFailed
+
+echo Program Files folder removed successfully.
+goto uninstallDone
+
+
+:programFilesFolderMissing
+echo Program Files folder was not found.
+goto uninstallDone
+
+
+:programFilesRemoveFailed
+echo Error: Failed to remove folder:
+echo %PROGRAM_DIR%
+echo.
+echo You may need to close qUpdater or delete the folder manually.
+echo.
+echo Press any key to close this window...
+pause >nul
+exit /b 1
+
+
+:uninstallDone
 echo.
 echo Uninstall complete.
 echo.
@@ -118,6 +136,7 @@ exit /b 0
 
 
 :UACPrompt
+echo Requesting administrative privileges to remove Program Files folder...
 echo Set UAC = CreateObject^("Shell.Application"^) > "%temp%\getadmin_qUpdater_uninstall.vbs"
 echo UAC.ShellExecute "%~s0", "/deleteProgramFiles", "", "runas", 1 >> "%temp%\getadmin_qUpdater_uninstall.vbs"
 "%temp%\getadmin_qUpdater_uninstall.vbs"
