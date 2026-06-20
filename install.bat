@@ -1,89 +1,144 @@
 @echo off
+setlocal
+
 echo Installing qUpdater...
+echo.
 
-:: Request admin privileges
->nul 2>&1 "%SYSTEMROOT%\system32\cacls.exe" "%SYSTEMROOT%\system32\config\system"
-if '%errorlevel%' NEQ '0' (
-    echo Requesting administrative privileges...
-    goto UACPrompt
-) else ( goto gotAdmin )
+:: Source paths - where this .bat is located
+set "SOURCE_DIR=%~dp0"
+set "SOURCE_EXE=%SOURCE_DIR%qUpdater.exe"
 
-:UACPrompt
-    echo Set UAC = CreateObject^("Shell.Application"^) > "%temp%\getadmin.vbs"
-    echo UAC.ShellExecute "%~s0", "", "", "runas", 1 >> "%temp%\getadmin.vbs"
-    "%temp%\getadmin.vbs"
-    exit /B
+:: If relaunched from UAC directly into Program Files mode
+if /I "%~1"=="/programfiles" goto installProgramFiles
 
-:gotAdmin
-    if exist "%temp%\getadmin.vbs" ( del "%temp%\getadmin.vbs" )
-    pushd "%CD%"
-    CD /D "%~dp0"
+:: Check if qUpdater.exe exists next to this .bat
+if not exist "%SOURCE_EXE%" (
+	echo Error: qUpdater.exe not found in the same folder as this .bat!
+	echo Expected location:
+	echo %SOURCE_EXE%
+	echo.
+	echo Press any key to exit...
+	pause >nul
+	exit /b 1
+)
+
+:menu
+echo Choose installation type:
+echo.
+echo 1 - Install to Program Files
+echo     Copies qUpdater.exe to Program Files and autoruns from there.
+echo     Requires administrator permission.
+echo.
+echo 2 - Run from this folder
+echo     Keeps qUpdater.exe where it is and autoruns from this location.
+echo     No administrator permission required.
+echo.
+set /p INSTALL_CHOICE="Enter choice [1/2]: "
+
+if "%INSTALL_CHOICE%"=="1" goto installProgramFiles
+if "%INSTALL_CHOICE%"=="2" goto installCurrentFolder
 
 echo.
-echo Current directory: %CD%
+echo Invalid choice. Please enter 1 or 2.
+echo.
+goto menu
 
-:: Kill any existing instances
+
+:installProgramFiles
+echo.
+echo Selected: Install to Program Files
+
+:: Check admin rights
+fltmc >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+	echo Requesting administrative privileges...
+	goto UACPrompt
+)
+
+set "INSTALL_DIR=%ProgramFiles%\qUpdater"
+set "TARGET_EXE=%INSTALL_DIR%\qUpdater.exe"
+
+echo.
 echo Stopping any running instances...
 taskkill /F /IM qUpdater.exe 2>nul
 
-:: Create program directory
-set INSTALL_DIR=%ProgramFiles%\qUpdater
-echo Creating installation directory: %INSTALL_DIR%
+echo.
+echo Creating installation directory:
+echo %INSTALL_DIR%
 mkdir "%INSTALL_DIR%" 2>nul
 
-:: Copy files
-echo Copying files...
-if not exist "qUpdater.exe" (
-    echo Error: qUpdater.exe not found in current directory!
-    echo Current directory: %CD%
-    echo Press any key to exit...
-    pause >nul
-    exit /b 1
-)
+echo.
+echo Copying qUpdater.exe...
+copy /Y "%SOURCE_EXE%" "%TARGET_EXE%" >nul
 
-copy /Y "qUpdater.exe" "%INSTALL_DIR%"
 if %ERRORLEVEL% NEQ 0 (
-    echo Error: Failed to copy qUpdater.exe to %INSTALL_DIR%
-    echo Press any key to exit...
-    pause >nul
-    exit /b 1
+	echo Error: Failed to copy qUpdater.exe to:
+	echo %TARGET_EXE%
+	echo.
+	echo Press any key to exit...
+	pause >nul
+	exit /b 1
 )
 
-:: Add to registry for startup (HKCU only)
-echo Adding to startup registry...
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "qUpdater" /t REG_SZ /d "\"%INSTALL_DIR%\qUpdater.exe\"" /f
+goto addRegistry
+
+
+:installCurrentFolder
+echo.
+echo Selected: Run from this folder
+
+set "TARGET_EXE=%SOURCE_EXE%"
+
+echo.
+echo Stopping any running instances...
+taskkill /F /IM qUpdater.exe 2>nul
+
+goto addRegistry
+
+
+:addRegistry
+echo.
+echo Adding qUpdater to startup registry...
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "qUpdater" /t REG_SZ /d "\"%TARGET_EXE%\"" /f
+
 if %ERRORLEVEL% NEQ 0 (
-    echo Error: Failed to add registry entry
-    echo Press any key to exit...
-    pause >nul
-    exit /b 1
+	echo Error: Failed to add registry entry.
+	echo.
+	echo Press any key to exit...
+	pause >nul
+	exit /b 1
 )
 
-:: Verify registry entry
+echo.
 echo Verifying registry entry...
-reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "qUpdater"
-if %ERRORLEVEL% NEQ 0 (
-    echo Error: Failed to verify registry entry
-    echo Press any key to exit...
-    pause >nul
-    exit /b 1
-)
+reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "qUpdater" >nul
 
-:: Verify file exists in correct location
-if not exist "%INSTALL_DIR%\qUpdater.exe" (
-    echo Error: qUpdater.exe not found in installation directory!
-    echo Expected location: %INSTALL_DIR%\qUpdater.exe
-    echo Press any key to exit...
-    pause >nul
-    exit /b 1
+if %ERRORLEVEL% NEQ 0 (
+	echo Error: Failed to verify registry entry.
+	echo.
+	echo Press any key to exit...
+	pause >nul
+	exit /b 1
 )
 
 echo.
 echo Installation complete!
-echo Installation directory: %INSTALL_DIR%
+echo qUpdater autorun path:
+echo %TARGET_EXE%
+
+echo.
 echo Starting qUpdater...
-start "" "%INSTALL_DIR%\qUpdater.exe"
+start "" "%TARGET_EXE%"
 
 echo.
 echo Press any key to close this window...
 pause >nul
+exit /b 0
+
+
+:UACPrompt
+echo Set UAC = CreateObject^("Shell.Application"^) > "%temp%\getadmin_qUpdater.vbs"
+echo UAC.ShellExecute "%~s0", "/programfiles", "", "runas", 1 >> "%temp%\getadmin_qUpdater.vbs"
+"%temp%\getadmin_qUpdater.vbs"
+del "%temp%\getadmin_qUpdater.vbs" 2>nul
+exit /b
