@@ -8,8 +8,9 @@ echo.
 set "SOURCE_DIR=%~dp0"
 set "SOURCE_EXE=%SOURCE_DIR%qUpdater.exe"
 
-:: If relaunched from UAC directly into Program Files mode
-if /I "%~1"=="/programfiles" goto installProgramFiles
+:: If relaunched from UAC, only perform the Program Files copy in the elevated process.
+:: The original unelevated process writes HKCU so startup is registered for the launching user.
+if /I "%~1"=="/programfilescopy" goto copyProgramFiles
 
 :: Check if qUpdater.exe exists next to this .bat
 if not exist "%SOURCE_EXE%" (
@@ -48,37 +49,18 @@ goto menu
 echo.
 echo Selected: Install to Program Files
 
-:: Check admin rights
-fltmc >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-	echo Requesting administrative privileges...
-	goto UACPrompt
-)
-
 set "INSTALL_DIR=%ProgramFiles%\qUpdater"
 set "TARGET_EXE=%INSTALL_DIR%\qUpdater.exe"
 
-echo.
-echo Stopping any running instances...
-taskkill /F /IM qUpdater.exe 2>nul
-
-echo.
-echo Creating installation directory:
-echo %INSTALL_DIR%
-mkdir "%INSTALL_DIR%" 2>nul
-
-echo.
-echo Copying qUpdater.exe...
-copy /Y "%SOURCE_EXE%" "%TARGET_EXE%" >nul
-
+:: Check admin rights
+fltmc >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-	echo Error: Failed to copy qUpdater.exe to:
-	echo %TARGET_EXE%
-	echo.
-	echo Press any key to exit...
-	pause >nul
-	exit /b 1
+	echo Requesting administrative privileges to copy qUpdater.exe...
+	goto UACPrompt
 )
+
+call :copyProgramFiles
+if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 
 goto addRegistry
 
@@ -136,9 +118,52 @@ pause >nul
 exit /b 0
 
 
+:copyProgramFiles
+if not defined INSTALL_DIR set "INSTALL_DIR=%ProgramFiles%\qUpdater"
+if not defined TARGET_EXE set "TARGET_EXE=%INSTALL_DIR%\qUpdater.exe"
+echo.
+echo Stopping any running instances...
+taskkill /F /IM qUpdater.exe 2>nul
+
+echo.
+echo Creating installation directory:
+echo %INSTALL_DIR%
+mkdir "%INSTALL_DIR%" 2>nul
+
+echo.
+echo Copying qUpdater.exe...
+copy /Y "%SOURCE_EXE%" "%TARGET_EXE%" >nul
+
+if %ERRORLEVEL% NEQ 0 (
+	echo Error: Failed to copy qUpdater.exe to:
+	echo %TARGET_EXE%
+	echo.
+	echo Press any key to exit...
+	pause >nul
+	exit /b 1
+)
+
+exit /b 0
+
+
 :UACPrompt
-echo Set UAC = CreateObject^("Shell.Application"^) > "%temp%\getadmin_qUpdater.vbs"
-echo UAC.ShellExecute "%~s0", "/programfiles", "", "runas", 1 >> "%temp%\getadmin_qUpdater.vbs"
-"%temp%\getadmin_qUpdater.vbs"
-del "%temp%\getadmin_qUpdater.vbs" 2>nul
-exit /b
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -ArgumentList '/programfilescopy' -Verb RunAs -Wait"
+
+if %ERRORLEVEL% NEQ 0 (
+	echo Error: Administrative copy was cancelled or failed.
+	echo.
+	echo Press any key to exit...
+	pause >nul
+	exit /b 1
+)
+
+if not exist "%TARGET_EXE%" (
+	echo Error: qUpdater.exe was not copied to:
+	echo %TARGET_EXE%
+	echo.
+	echo Press any key to exit...
+	pause >nul
+	exit /b 1
+)
+
+goto addRegistry
